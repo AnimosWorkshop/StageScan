@@ -3,10 +3,11 @@ import time
 import numpy as np
 import logging
 
-from pymeasure.experiment import Procedure, FloatParameter, IntegerParameter, Parameter
+from pymeasure.experiment import Procedure, FloatParameter, IntegerParameter, ListParameter, Parameter
 from pymeasure.display.windows import ManagedWindow
 from pymeasure.instruments.srs import sr830
 from pymeasure.instruments.newport import esp300
+from PyQt5.QtWidgets import QLineEdit
 
 # Set up logging for internal error tracking
 log = logging.getLogger(__name__)
@@ -17,9 +18,10 @@ class DelayScanProcedure(Procedure):
     # 1. Hardware Communication
     gpib_lockin = Parameter('Lock-In GPIB', default='GPIB::8')
     gpib_stage = Parameter('ESP300 GPIB', default='GPIB::1')
+    stage_number = '2'
 
     # 2. Sweep Parameters
-    zero_delay_pos = FloatParameter('Zero Delay Point', units='mm', default=65.61)
+    zero_delay_pos = FloatParameter('Zero Delay Point', units='mm', default=65.665)
     start_pos = FloatParameter('Start Position', units='mm', default=67)
     end_pos = FloatParameter('End Position', units='mm', default=55)
     step_size = FloatParameter('Step Size', units='mm', default=0.005)
@@ -28,7 +30,7 @@ class DelayScanProcedure(Procedure):
     # 3. Instrument Settings
     integration_time = FloatParameter('Integration Time (TC)', units='s', default=0.1)
     sensitivity = FloatParameter('Sensitivity', units='V', default=0.000020)
-    filter_slope = IntegerParameter('Filter Slope', units='dB/oct', default=12)
+    filter_slope = ListParameter('Filter Slope', choices=[6, 12, 18, 24], units='dB/oct', default=12)
 
     # Added Time Delay to the permanent data pipeline
     DATA_COLUMNS = ['Position (mm)', 'Time Delay (ps)', 'Voltage (V)']
@@ -48,7 +50,7 @@ class DelayScanProcedure(Procedure):
             write_termination='\r',
             timeout=60000
         )
-        self.stages_controller.write('2MO')
+        self.stages_controller.write(f'{self.stage_number}MO')
 
         # Flush any stale errors from initialization
         log.info("Flushing ESP300 error buffer...")
@@ -61,6 +63,19 @@ class DelayScanProcedure(Procedure):
     def execute(self):
         """Executes the scan using zero-traffic hardware chaining to prevent GPIB crashes."""
         c_mm_ps = 0.299792458
+
+        # Map the selected filter slope to its required mathematical dwell multiplier
+        slope_to_tau_multiplier = {
+            6: 2.5,
+            12: 4.0,
+            18: 5.5,
+            24: 7.0
+        }
+        tau_multiplier = slope_to_tau_multiplier[self.filter_slope]
+        dwell_time = self.integration_time * tau_multiplier
+
+        log.info(
+            f"Filter slope: {self.filter_slope} dB/oct. Explicit dwell time set to {tau_multiplier}τ ({dwell_time:.3f} s).")
 
         # Dynamically calculate the directional vector and exact stepping array
         direction = 1 if self.end_pos >= self.start_pos else -1
@@ -77,7 +92,7 @@ class DelayScanProcedure(Procedure):
         log.info(f"Scan initialized for {total_points} discrete points.")
 
         # Initial macroscopic move using hardware chaining (Move -> Wait Stop -> Tell Position)
-        macro_cmd = f'2PA{theoretical_positions[0]:.4f};2WS;2TP?'
+        macro_cmd = f'2PA{theoretical_positions[0]:.4f};{self.stage_number}WS;{self.stage_number}TP?'
         log.info(f"Commanding macroscopic move: {macro_cmd}")
         actual_start = float(self.stages_controller.ask(macro_cmd))
 
@@ -90,7 +105,7 @@ class DelayScanProcedure(Procedure):
                 break
 
             # Chain the commands to offload the wait logic entirely to the ESP300 processor
-            move_cmd = f'2PA{theoretical_pos:.4f};2WS;2TP?'
+            move_cmd = f'{self.stage_number}PA{theoretical_pos:.4f};{self.stage_number}WS;{self.stage_number}TP?'
             log.info(f"[{idx + 1}/{total_points}] Executing chained command: {move_cmd}")
 
             # The script will halt on this line, generating zero bus traffic, until the stage replies
@@ -99,10 +114,7 @@ class DelayScanProcedure(Procedure):
 
             # Explicit dwell time for the SR830 low-pass filter to settle
             time.sleep(self.integration_time * 4)
-
-            # Execute the proven 10x query flush to clear the SR830's internal transient buffer
-            for _ in range(10):
-                _ = self.lock_in.x
+            self.lock_in.write("*CLS")
 
             # Acquire valid steady-state data
             voltage_sum = 0.0
@@ -139,13 +151,23 @@ class ScanGUI(ManagedWindow):
             inputs=[
                 'gpib_lockin', 'gpib_stage',
                 'zero_delay_pos', 'start_pos', 'end_pos', 'step_size',
-                'averages', 'integration_time', 'sensitivity'
+                'averages', 'integration_time', 'sensitivity', 'filter_slope'
             ],
             displays=['zero_delay_pos', 'start_pos', 'end_pos', 'step_size'],
             x_axis='Time Delay (ps)',  # Sets the temporal axis as the default view
             y_axis='Voltage (V)'
         )
         self.setWindowTitle('Optical Probe Delay Stage & Lock-In Scanner')
+
+        # 1. Set PyMeasure's internal directory path variable
+        self.directory = r"./data/"
+
+        # 2. Update the visual QLineEdit in the GUI (if present)
+        for line_edit in self.findChildren(QLineEdit):
+            # PyMeasure initializes the directory line edit with "." or the current working directory
+            if line_edit.text() in ('.', '', sys.path[0]):
+                line_edit.setText(self.directory)
+                break
 
 
 if __name__ == "__main__":
