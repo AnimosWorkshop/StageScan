@@ -97,7 +97,19 @@ class DelayScanProcedure(Procedure):
         actual_start = float(self.stages_controller.ask(macro_cmd))
 
         log.info(f"Initial move complete. True position: {actual_start} mm. Settling Lock-in...")
-        time.sleep(self.integration_time * 10)
+        time.sleep(self.integration_time * 14)
+
+        try:
+            self.lock_in.adapter.connection.clear()  # Sends IEEE-488.1 Selected Device Clear (SDC)
+        except Exception:
+            pass
+
+        # Guarantee FIFO realignment by exhausting any remaining string fragments
+        for _ in range(5):
+            try:
+                _ = self.lock_in.x
+            except Exception:
+                pass
 
         for idx, theoretical_pos in enumerate(theoretical_positions):
             if self.should_stop():
