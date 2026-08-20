@@ -22,8 +22,8 @@ class DelayScanProcedure(Procedure):
 
     # 2. Sweep Parameters
     zero_delay_pos = FloatParameter('Zero Delay Point', units='mm', default=65.66)
-    start_pos = FloatParameter('Start Position', units='mm', default=67)
-    end_pos = FloatParameter('End Position', units='mm', default=55)
+    start_pos = FloatParameter('Start Position', units='mm', default=66.2)
+    end_pos = FloatParameter('End Position', units='mm', default=62)
     step_size = FloatParameter('Step Size', units='mm', default=0.005)
     averages = IntegerParameter('Averages per point', default=3)
 
