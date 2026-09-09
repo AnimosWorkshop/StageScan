@@ -22,14 +22,14 @@ class DelayScanProcedure(Procedure):
 
     # 2. Sweep Parameters
     zero_delay_pos = FloatParameter('Zero Delay Point', units='mm', default=65.66)
-    start_pos = FloatParameter('Start Position', units='mm', default=66.2)
-    end_pos = FloatParameter('End Position', units='mm', default=62)
+    start_pos = FloatParameter('Start Position', units='mm', default=66.1)
+    end_pos = FloatParameter('End Position', units='mm', default=64)
     step_size = FloatParameter('Step Size', units='mm', default=0.005)
     averages = IntegerParameter('Averages per point', default=3)
 
     # 3. Instrument Settings
     integration_time = FloatParameter('Integration Time (TC)', units='s', default=0.1)
-    sensitivity = FloatParameter('Sensitivity', units='V', default=0.000020)
+    sensitivity = FloatParameter('Sensitivity', units='V', default=0.000100)
     filter_slope = ListParameter('Filter Slope', choices=[6, 12, 18, 24], units='dB/oct', default=12)
 
     # Added Time Delay to the permanent data pipeline
