@@ -189,4 +189,7 @@ class LiveMonitorGUI(QtWidgets.QMainWindow):
 
 
 if __name__ == "__main__":
-    app = QtWidgets.QApplication(sys.argv
+    app = QtWidgets.QApplication(sys.argv)
+    window = LiveMonitorGUI()
+    window.show()
+    sys.exit(app.exec_())
